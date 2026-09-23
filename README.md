@@ -21,7 +21,14 @@ python -m pytree [pfad]
 
 ```bash
 pytree [pfad]      # default: aktuelles Verzeichnis
+pytree --help
+pytree --version
 ```
+
+Beim Start wird eine kurze Statuszeile ausgegeben (Version, analysierter
+Pfad, Kurzhinweis auf `?`/`q`), bevor die Baumansicht den Bildschirm
+übernimmt. Ein unerwarteter Fehler wird mit Traceback auf stderr ausgegeben
+statt das Fenster stillschweigend zu schließen.
 
 ### Tastenkürzel
 
