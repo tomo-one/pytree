@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pytree"
+version = "0.3.0"
+description = "Interaktiver, tastaturgesteuerter Disk-Usage-Analyzer (CLI/TUI)"
+requires-python = ">=3.9"
+dependencies = ["textual>=0.58"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[project.scripts]
+pytree = "pytree.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
