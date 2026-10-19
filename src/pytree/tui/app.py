@@ -15,8 +15,8 @@ from textual.widgets.tree import TreeNode
 from pytree.core.format import human_size
 from pytree.core.model import Node, ScanIssue, ScanState
 from pytree.core.scan import reset_node, scan_level, scan_recursive
-from pytree.tui.labels import node_label, sort_children
-from pytree.tui.widgets import HelpScreen, IssuesScreen, StatusBar
+from pytree.tui.labels import SortMode, node_label, sort_children
+from pytree.tui.widgets import HelpScreen, IssuesScreen, PyTreeView, StatusBar
 
 _PROGRESS_THROTTLE_SECONDS = 0.15
 
@@ -38,6 +38,7 @@ class PyTreeApp(App[None]):
 
     BINDINGS = [
         Binding("r", "rescan_selected", "Rescan"),
+        Binding("s", "toggle_sort", "Sortierung"),
         Binding("e", "show_issues", "Issues"),
         Binding("question_mark", "show_help", "Hilfe"),
         Binding("f1", "show_help", "Hilfe", show=False),
@@ -53,11 +54,12 @@ class PyTreeApp(App[None]):
         self._treenodes: dict[int, TreeNode[Node]] = {}
         self._issues: list[ScanIssue] = []
         self._scanning_count = 0
+        self._sort_mode = SortMode.SIZE
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical():
-            yield Tree[Node](
+            yield PyTreeView(
                 node_label(self._root_node), data=self._root_node, id="tree"
             )
             yield StatusBar(id="status")
@@ -99,6 +101,15 @@ class PyTreeApp(App[None]):
         tree_node.remove_children()
         tree_node.set_label(node_label(core_node))
         self._begin_scan(core_node, tree_node)
+
+    def action_toggle_sort(self) -> None:
+        self._sort_mode = self._sort_mode.other
+        tree = self.query_one(Tree)
+        expanded_ids: set[int] = set()
+        self._collect_expanded_ids(tree.root, expanded_ids)
+        self._rebuild_sorted(tree.root)
+        self._apply_expanded_ids(tree.root, expanded_ids)
+        self._refresh_status()
 
     def action_show_issues(self) -> None:
         self.push_screen(IssuesScreen(list(self._issues)))
@@ -159,7 +170,7 @@ class PyTreeApp(App[None]):
 
     def _populate_children(self, tree_node: TreeNode[Node], core_node: Node) -> None:
         tree_node.remove_children()
-        for child in sort_children(core_node.children or []):
+        for child in sort_children(core_node.children or [], self._sort_mode):
             label = node_label(child)
             if child.is_dir:
                 child_tree_node = tree_node.add(label, data=child, allow_expand=True)
@@ -167,6 +178,26 @@ class PyTreeApp(App[None]):
                 child_tree_node = tree_node.add_leaf(label, data=child)
             self._treenodes[id(child)] = child_tree_node
         tree_node.set_label(node_label(core_node))
+
+    def _collect_expanded_ids(self, tree_node: TreeNode[Node], acc: set[int]) -> None:
+        if tree_node.data is not None and tree_node.is_expanded:
+            acc.add(id(tree_node.data))
+        for child in tree_node.children:
+            self._collect_expanded_ids(child, acc)
+
+    def _rebuild_sorted(self, tree_node: TreeNode[Node]) -> None:
+        core_node = tree_node.data
+        if core_node is None or not core_node.is_dir or core_node.children is None:
+            return
+        self._populate_children(tree_node, core_node)
+        for child in tree_node.children:
+            self._rebuild_sorted(child)
+
+    def _apply_expanded_ids(self, tree_node: TreeNode[Node], expanded_ids: set[int]) -> None:
+        if tree_node.data is not None and id(tree_node.data) in expanded_ids:
+            tree_node.expand()
+        for child in tree_node.children:
+            self._apply_expanded_ids(child, expanded_ids)
 
     def _refresh_label(self, node: Node) -> None:
         tree_node = self._treenodes.get(id(node))
@@ -180,6 +211,7 @@ class PyTreeApp(App[None]):
             str(self._root_path),
             human_size(root.size),
             f"{root.file_count} Dateien",
+            f"sortiert: {self._sort_mode.label} (s)",
         ]
         if self._issues:
             parts.append(f"{len(self._issues)} übersprungen (e)")

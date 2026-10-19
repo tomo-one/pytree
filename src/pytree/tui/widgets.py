@@ -3,15 +3,44 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Static
+from textual.widgets import Static, Tree
 
-from pytree.core.model import ScanIssue
+from pytree.core.model import Node, ScanIssue
 
 
 class StatusBar(Static):
     """Statuszeile: aktueller Pfad, Anzahl Elemente, Scan-Status."""
+
+
+class PyTreeView(Tree[Node]):
+    """Tree mit Pfeil-/Vi-Tasten für Auf-/Zuklappen und Navigation.
+
+    Textuals Tree erbt von ScrollableContainer, das Pfeil-links/-rechts für
+    horizontales Scrollen bindet. Sobald ein Label breiter als das Terminal
+    ist (lange Pfade), würde das App-Level-Bindings übertrumpfen. Die Tasten
+    müssen daher hier am Widget selbst liegen."""
+
+    BINDINGS = [
+        Binding("right", "expand_node", "Aufklappen", show=False),
+        Binding("l", "expand_node", "Aufklappen", show=False),
+        Binding("left", "collapse_node", "Zuklappen", show=False),
+        Binding("h", "collapse_node", "Zuklappen", show=False),
+        Binding("j", "cursor_down", "Runter", show=False),
+        Binding("k", "cursor_up", "Hoch", show=False),
+    ]
+
+    def action_expand_node(self) -> None:
+        node = self.cursor_node
+        if node is not None and node.allow_expand and not node.is_expanded:
+            node.expand()
+
+    def action_collapse_node(self) -> None:
+        node = self.cursor_node
+        if node is not None and node.allow_expand and node.is_expanded:
+            node.collapse()
 
 
 HELP_TEXT = """\
@@ -21,6 +50,7 @@ HELP_TEXT = """\
   →, Enter, l      Verzeichnis aufklappen (scannt bei Bedarf)
   ←, h             Verzeichnis zuklappen
   r                Markierten Knoten neu scannen
+  s                Sortierung umschalten (Größe/Name)
   e                Übersprungene Einträge anzeigen
   ?, F1            Diese Hilfe
   q, Ctrl+C        Beenden

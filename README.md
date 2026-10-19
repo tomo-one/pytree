@@ -38,6 +38,7 @@ statt das Fenster stillschweigend zu schließen.
 | →, Enter, l       | Verzeichnis aufklappen (scannt bei Bedarf) |
 | ←, h              | Verzeichnis zuklappen             |
 | r                 | Markierten Knoten neu scannen     |
+| s                 | Sortierung umschalten (Größe/Name) |
 | e                 | Übersprungene Einträge anzeigen   |
 | ?, F1             | Hilfe                             |
 | q, Ctrl+C         | Beenden                           |

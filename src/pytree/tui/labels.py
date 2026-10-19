@@ -2,16 +2,32 @@
 
 from __future__ import annotations
 
+from enum import Enum
+
 from rich.text import Text
 
 from pytree.core.format import human_size, size_bar
 from pytree.core.model import Node, ScanState
 
 
-def sort_children(children: list[Node]) -> list[Node]:
-    """Größte zuerst; noch nicht gescannte Verzeichnisse (size=0) rutschen
-    dadurch automatisch ans Ende und können bei Bekanntwerden ihrer Größe
-    wieder nach oben wandern."""
+class SortMode(Enum):
+    SIZE = "size"
+    NAME = "name"
+
+    @property
+    def label(self) -> str:
+        return "Größe" if self is SortMode.SIZE else "Name"
+
+    @property
+    def other(self) -> "SortMode":
+        return SortMode.NAME if self is SortMode.SIZE else SortMode.SIZE
+
+
+def sort_children(children: list[Node], mode: SortMode = SortMode.SIZE) -> list[Node]:
+    """Nach Größe (größte zuerst, noch nicht gescannte Verzeichnisse mit
+    size=0 rutschen dadurch ans Ende) oder alphabetisch nach Name sortieren."""
+    if mode is SortMode.NAME:
+        return sorted(children, key=lambda n: n.name.lower())
     return sorted(children, key=lambda n: (-(n.size or 0), n.name.lower()))
 
 
