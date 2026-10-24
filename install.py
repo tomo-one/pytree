@@ -42,22 +42,32 @@ def _locations() -> tuple[Path, Path, Path]:
 
 def _write_launcher(launcher: Path, lib_dir: Path, py: str) -> None:
     launcher.parent.mkdir(parents=True, exist_ok=True)
+    text = _launcher_text(lib_dir, py)
+    # Unverändert lassen: unter Windows liest cmd eine laufende .cmd-Datei
+    # zeilenweise nach, ein Überschreiben während des Updates wäre riskant.
+    if launcher.exists() and launcher.read_text(encoding="utf-8").replace("\r\n", "\n") == text:
+        return
     if IS_WINDOWS:
-        text = (
-            "@echo off\n"
-            f'set "PYTHONPATH={lib_dir};%PYTHONPATH%"\n'
-            f'"{py}" -m pytree %*\n'
-        )
         with open(launcher, "w", newline="\r\n", encoding="utf-8") as fh:
             fh.write(text)
     else:
-        text = (
-            "#!/bin/sh\n"
-            f"PYTHONPATH={shlex.quote(str(lib_dir))}${{PYTHONPATH:+:$PYTHONPATH}} "
-            f'exec {shlex.quote(py)} -m pytree "$@"\n'
-        )
         launcher.write_text(text, encoding="utf-8")
         launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def _launcher_text(lib_dir: Path, py: str) -> str:
+    if IS_WINDOWS:
+        return (
+            "@echo off\n"
+            'set "PYTREE_MANAGED=1"\n'
+            f'set "PYTHONPATH={lib_dir};%PYTHONPATH%"\n'
+            f'"{py}" -m pytree %*\n'
+        )
+    return (
+        "#!/bin/sh\n"
+        f"PYTREE_MANAGED=1 PYTHONPATH={shlex.quote(str(lib_dir))}${{PYTHONPATH:+:$PYTHONPATH}} "
+        f'exec {shlex.quote(py)} -m pytree "$@"\n'
+    )
 
 
 def _in_venv() -> bool:
@@ -162,12 +172,16 @@ def install(with_deps: bool) -> int:
             return 1
 
     target = lib_dir / "pytree"
+    staging = lib_dir / "pytree.new"
+    lib_dir.mkdir(parents=True, exist_ok=True)
+    if staging.exists():
+        shutil.rmtree(staging)
+    shutil.copytree(
+        SOURCE_PACKAGE, staging, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
+    )
     if target.exists():
         shutil.rmtree(target)
-    lib_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(
-        SOURCE_PACKAGE, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
-    )
+    staging.rename(target)
     _write_launcher(launcher, lib_dir, py)
 
     env = {**os.environ, "PYTHONPATH": str(lib_dir)}

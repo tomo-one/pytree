@@ -36,7 +36,20 @@ def main(argv: list[str] | None = None) -> int:
         "path", nargs="?", default=".", help="Zu analysierendes Verzeichnis (default: .)"
     )
     parser.add_argument("--version", action="version", version=f"pytree {__version__}")
+    parser.add_argument(
+        "--update", action="store_true", help="auf die neueste Version von GitHub aktualisieren"
+    )
+    parser.add_argument(
+        "--check-update",
+        action="store_true",
+        help="nur prüfen, ob eine neuere Version verfügbar ist",
+    )
     args = parser.parse_args(argv)
+
+    if args.update or args.check_update:
+        from pytree.update import run_update
+
+        return run_update(check_only=not args.update)
 
     target = Path(args.path).expanduser()
     if not target.exists():

@@ -27,6 +27,21 @@ funktioniert der Aufruf mit vollem Pfad weiterhin.
 
 Entfernen: `python3 install.py --uninstall`
 
+### Aktualisieren
+
+```bash
+pytree --check-update     # nur prüfen, ob eine neuere Version existiert
+pytree --update           # neueste Version von GitHub holen und installieren
+```
+
+`--update` lädt das Archiv des neuesten Tags (`vX.Y.Z`) von GitHub, entpackt
+es temporär und führt dessen `install.py` mit demselben Python aus. Dadurch
+bleiben Interpreter bzw. private venv der Installation erhalten. Gebraucht
+wird nur ein Internetzugang zu github.com (Proxy-Variablen werden beachtet).
+Das Update funktioniert nur für eine mit `install.py` installierte Version.
+Eine vor v0.6 installierte Version hat die Funktion noch nicht und muss
+einmalig mit `python3 install.py` aus der neuen Quelle aktualisiert werden.
+
 Ohne Installation direkt aus dem Quellordner (textual muss vorhanden sein):
 
 ```bash
@@ -52,6 +67,7 @@ python3 start.py [pfad]
 pytree [pfad]      # default: aktuelles Verzeichnis
 pytree --help
 pytree --version
+pytree --update           # siehe Abschnitt "Aktualisieren"
 ```
 
 Beim Start wird eine kurze Statuszeile ausgegeben (Version, analysierter
