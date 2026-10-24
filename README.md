@@ -75,6 +75,11 @@ Pfad, Kurzhinweis auf `?`/`q`), bevor die Baumansicht den Bildschirm
 übernimmt. Ein unerwarteter Fehler wird mit Traceback auf stderr ausgegeben
 statt das Fenster stillschweigend zu schließen.
 
+Als erster Eintrag der Wurzel steht `..`. Mit Enter oder → darauf (oder mit
+`u`/Backspace) wird das Elternverzeichnis zur neuen Wurzel. Der bisher
+gescannte Baum bleibt dabei erhalten, nur die Nachbarordner werden neu
+gelesen. Im obersten Verzeichnis fehlt der Eintrag.
+
 ### Tastenkürzel
 
 | Taste            | Aktion                          |
@@ -82,6 +87,7 @@ statt das Fenster stillschweigend zu schließen.
 | ↑/↓, j/k         | Navigation                       |
 | →, Enter, l       | Verzeichnis aufklappen (scannt bei Bedarf) |
 | ←, h              | Verzeichnis zuklappen             |
+| u, Backspace      | Eine Ebene höher (Wurzel wird zum Elternverzeichnis) |
 | r                 | Markierten Knoten neu scannen     |
 | s                 | Sortierung umschalten (Größe/Name) |
 | e                 | Übersprungene Einträge anzeigen   |

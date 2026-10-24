@@ -10,6 +10,20 @@ from pytree.core.format import human_size, size_bar
 from pytree.core.model import Node, ScanState
 
 
+PARENT_LINK_NAME = ".."
+
+
+def is_parent_link(node: Node | None) -> bool:
+    """Der Eintrag ".." am Anfang der Wurzel. Echte Dateien heißen nie so."""
+    return node is not None and node.name == PARENT_LINK_NAME
+
+
+def parent_link_label() -> Text:
+    text = Text(PARENT_LINK_NAME, style="bold cyan")
+    text.append("  (eine Ebene höher)", style="dim")
+    return text
+
+
 class SortMode(Enum):
     SIZE = "size"
     NAME = "name"

@@ -9,6 +9,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Tree
 
 from pytree.core.model import Node, ScanIssue
+from pytree.tui.labels import is_parent_link
 
 
 class StatusBar(Static):
@@ -34,6 +35,9 @@ class PyTreeView(Tree[Node]):
 
     def action_expand_node(self) -> None:
         node = self.cursor_node
+        if node is not None and is_parent_link(node.data):
+            self.app.action_go_up()  # type: ignore[attr-defined]
+            return
         if node is not None and node.allow_expand and not node.is_expanded:
             node.expand()
 
@@ -50,6 +54,7 @@ HELP_TEXT = """\
   →, Enter, l      Verzeichnis aufklappen (scannt bei Bedarf)
   ←, h             Verzeichnis zuklappen
   r                Markierten Knoten neu scannen
+  u, Backspace     Eine Ebene höher (auch: ".." wählen)
   s                Sortierung umschalten (Größe/Name)
   e                Übersprungene Einträge anzeigen
   ?, F1            Diese Hilfe

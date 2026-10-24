@@ -15,7 +15,14 @@ from textual.widgets.tree import TreeNode
 from pytree.core.format import human_size
 from pytree.core.model import Node, ScanIssue, ScanState
 from pytree.core.scan import reset_node, scan_level, scan_recursive
-from pytree.tui.labels import SortMode, node_label, sort_children
+from pytree.tui.labels import (
+    PARENT_LINK_NAME,
+    SortMode,
+    is_parent_link,
+    node_label,
+    parent_link_label,
+    sort_children,
+)
 from pytree.tui.widgets import HelpScreen, IssuesScreen, PyTreeView, StatusBar
 
 _PROGRESS_THROTTLE_SECONDS = 0.15
@@ -37,6 +44,8 @@ class PyTreeApp(App[None]):
     """
 
     BINDINGS = [
+        Binding("u", "go_up", "Ebene hoch"),
+        Binding("backspace", "go_up", "Ebene hoch", show=False),
         Binding("r", "rescan_selected", "Rescan"),
         Binding("s", "toggle_sort", "Sortierung"),
         Binding("e", "show_issues", "Issues"),
@@ -89,6 +98,59 @@ class PyTreeApp(App[None]):
             # eines Vorfahren geladen, die UI-Knoten fehlen aber noch.
             self._populate_children(event.node, core_node)
 
+    def on_tree_node_selected(self, event: Tree.NodeSelected[Node]) -> None:
+        if is_parent_link(event.node.data):
+            self.action_go_up()
+
+    def action_go_up(self) -> None:
+        """Wurzel auf das Elternverzeichnis setzen. Der bisherige, schon
+        gescannte Baum wird als Unterknoten übernommen statt neu gelesen."""
+        old_root = self._root_node
+        parent_path = self._root_path.parent
+        if parent_path == self._root_path:
+            self.notify("Bereits im obersten Verzeichnis.")
+            return
+
+        new_root = Node(path=parent_path, name=str(parent_path), is_dir=True)
+        issues = scan_level(new_root)
+        if new_root.state == ScanState.ERROR:
+            self.notify(
+                f"Kein Zugriff auf {parent_path}: {new_root.error}", severity="error"
+            )
+            return
+
+        children = new_root.children or []
+        for index, child in enumerate(children):
+            if child.is_dir and child.path == old_root.path:
+                children[index] = old_root
+                break
+        old_root.parent = new_root
+        old_root.name = old_root.path.name or str(old_root.path)
+        new_root.size = sum(c.size for c in children)
+        new_root.file_count = sum(c.file_count for c in children)
+
+        self._root_node = new_root
+        self._root_path = parent_path
+        self._issues.extend(issues)
+        self._treenodes.clear()
+
+        tree = self.query_one(Tree)
+        tree.reset(node_label(new_root), new_root)
+        self._treenodes[id(new_root)] = tree.root
+        self._populate_children(tree.root, new_root)
+        tree.root.expand()
+
+        self._scanning_count += 1
+        self._scan_recursive_worker(new_root, old_root)
+
+        old_tree_node = self._treenodes.get(id(old_root))
+        if old_tree_node is not None:
+            self._populate_children(old_tree_node, old_root)
+            old_tree_node.expand()
+            # Zeilennummern des neuen Baums gibt es erst nach dem nächsten Rendern.
+            tree.call_after_refresh(tree.move_cursor, old_tree_node)
+        self._refresh_status()
+
     def action_rescan_selected(self) -> None:
         tree = self.query_one(Tree)
         tree_node = tree.cursor_node
@@ -132,7 +194,7 @@ class PyTreeApp(App[None]):
         self._scan_recursive_worker(core_node)
 
     @work(thread=True, exclusive=False)
-    def _scan_recursive_worker(self, core_node: Node) -> None:
+    def _scan_recursive_worker(self, core_node: Node, skip: Node | None = None) -> None:
         last_update = 0.0
 
         def on_progress(node: Node) -> None:
@@ -143,7 +205,7 @@ class PyTreeApp(App[None]):
             last_update = now
             self.call_from_thread(self._apply_progress, node)
 
-        issues = scan_recursive(core_node, on_progress=on_progress)
+        issues = scan_recursive(core_node, on_progress=on_progress, skip=skip)
         self.call_from_thread(self._finish_scan, issues)
 
     def _apply_progress(self, node: Node) -> None:
@@ -170,6 +232,16 @@ class PyTreeApp(App[None]):
 
     def _populate_children(self, tree_node: TreeNode[Node], core_node: Node) -> None:
         tree_node.remove_children()
+        if core_node is self._root_node and self._root_path.parent != self._root_path:
+            tree_node.add_leaf(
+                parent_link_label(),
+                data=Node(
+                    path=self._root_path.parent,
+                    name=PARENT_LINK_NAME,
+                    is_dir=False,
+                    state=ScanState.DONE,
+                ),
+            )
         for child in sort_children(core_node.children or [], self._sort_mode):
             label = node_label(child)
             if child.is_dir:

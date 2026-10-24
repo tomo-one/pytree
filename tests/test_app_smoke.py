@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from pytree.tui.app import PyTreeApp
+from pytree.tui.labels import is_parent_link
 
 
 @pytest.mark.asyncio
@@ -95,6 +96,11 @@ async def test_expand_triggers_lazy_scan(sample_tree: Path):
         assert sub1.data.size == 250
 
 
+def _names(tree_node) -> list[str]:
+    """Kinder-Namen ohne den ".."-Eintrag zur Elternebene."""
+    return [c.data.name for c in tree_node.children if not is_parent_link(c.data)]
+
+
 async def _wait_for_root_scan(app: PyTreeApp, expected_size: int = 360) -> None:
     for _ in range(50):
         if app._root_node.size == expected_size:
@@ -117,17 +123,17 @@ async def test_sort_toggle_switches_between_size_and_name(sample_tree: Path):
         # mit den inzwischen vollständigen Größen.
         await pilot.press("s")  # -> Name
         await pilot.pause()
-        names = [c.data.name for c in tree.root.children]
+        names = _names(tree.root)
         assert names == ["a.txt", "sub1", "sub2"]
 
         await pilot.press("s")  # -> Größe (sub1=250, a.txt=100, sub2=10)
         await pilot.pause()
-        names = [c.data.name for c in tree.root.children]
+        names = _names(tree.root)
         assert names == ["sub1", "a.txt", "sub2"]
 
         await pilot.press("s")  # -> Name
         await pilot.pause()
-        names = [c.data.name for c in tree.root.children]
+        names = _names(tree.root)
         assert names == ["a.txt", "sub1", "sub2"]
 
 
@@ -151,3 +157,93 @@ async def test_sort_toggle_preserves_expanded_state(sample_tree: Path):
         sub1 = next(c for c in tree.root.children if c.data.name == "sub1")
         assert sub1.is_expanded
         assert {c.data.name for c in sub1.children} == {"b.txt", "sub1a"}
+
+
+@pytest.mark.asyncio
+async def test_parent_link_is_first_entry_of_root(sample_tree: Path):
+    app = PyTreeApp(sample_tree / "sub1")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tree = app.query_one("Tree")
+        first = tree.root.children[0]
+        assert is_parent_link(first.data)
+        assert first.data.path == sample_tree
+        assert not first.allow_expand
+
+
+@pytest.mark.asyncio
+async def test_go_up_with_key_u_keeps_scanned_subtree(sample_tree: Path):
+    sub1_path = sample_tree / "sub1"
+    app = PyTreeApp(sub1_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_for_root_scan(app, expected_size=250)
+        old_root = app._root_node
+
+        await pilot.press("u")
+        await pilot.pause()
+
+        assert app._root_path == sample_tree
+        assert app._root_node.path == sample_tree
+        tree = app.query_one("Tree")
+        assert set(_names(tree.root)) == {"a.txt", "sub1", "sub2"}
+
+        sub1 = next(c for c in tree.root.children if c.data.name == "sub1")
+        assert sub1.data is old_root
+        assert sub1.data.parent is app._root_node
+        assert sub1.is_expanded
+        assert tree.cursor_node is sub1
+
+        await _wait_for_root_scan(app, expected_size=360)
+        assert sub1.data.size == 250
+
+
+@pytest.mark.asyncio
+async def test_go_up_via_parent_link_with_enter_and_right_arrow(sample_tree: Path):
+    for key in ("enter", "right"):
+        app = PyTreeApp(sample_tree / "sub1" / "sub1a")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            tree = app.query_one("Tree")
+            tree.move_cursor(tree.root.children[0])
+            await pilot.pause()
+            assert is_parent_link(tree.cursor_node.data)
+
+            await pilot.press(key)
+            await pilot.pause()
+            assert app._root_path == sample_tree / "sub1", key
+
+
+@pytest.mark.asyncio
+async def test_go_up_twice_and_backspace(sample_tree: Path):
+    app = PyTreeApp(sample_tree / "sub1" / "sub1a")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("backspace")
+        await pilot.pause()
+        await pilot.press("u")
+        await pilot.pause()
+        assert app._root_path == sample_tree
+        await _wait_for_root_scan(app)
+        tree = app.query_one("Tree")
+        assert set(_names(tree.root)) == {"a.txt", "sub1", "sub2"}
+
+
+@pytest.mark.asyncio
+async def test_go_up_refused_when_parent_unreadable(sample_tree: Path, monkeypatch):
+    import os
+
+    real_scandir = os.scandir
+
+    def deny_parent(path):
+        if Path(path) == sample_tree:
+            raise PermissionError("Zugriff verweigert")
+        return real_scandir(path)
+
+    app = PyTreeApp(sample_tree / "sub1")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        monkeypatch.setattr(os, "scandir", deny_parent)
+        await pilot.press("u")
+        await pilot.pause()
+        assert app._root_path == sample_tree / "sub1"

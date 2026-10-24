@@ -122,3 +122,16 @@ def test_symlink_counted_but_not_recursed(tmp_path: Path):
     assert link_node.is_symlink
     assert link_node.is_dir is False
     assert link_node.children == []
+
+
+def test_scan_recursive_skip_leaves_subtree_untouched(sample_tree: Path):
+    root = _root_node(sample_tree)
+    scan_level(root)
+    sub1 = next(c for c in root.children if c.name == "sub1")
+
+    scan_recursive(root, skip=sub1)
+
+    assert sub1.children is None
+    sub2 = next(c for c in root.children if c.name == "sub2")
+    assert sub2.size == 10
+    assert root.size == 110

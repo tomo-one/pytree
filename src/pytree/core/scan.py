@@ -86,15 +86,19 @@ def scan_level(node: Node) -> list[ScanIssue]:
 
 
 def scan_recursive(
-    node: Node, on_progress: Callable[[Node], None] | None = None
+    node: Node,
+    on_progress: Callable[[Node], None] | None = None,
+    skip: Node | None = None,
 ) -> list[ScanIssue]:
     """Scannt `node` und alle Unterverzeichnisse vollständig (bottom-up
     aggregiert). Ruft `on_progress(node)` nach jedem fertig aggregierten
     Verzeichnis auf - Throttling von UI-Updates ist Sache des Aufrufers.
     Bricht bei einzelnen Fehlern nie ab, sammelt sie stattdessen.
+    `skip` ist ein Teilbaum, der nicht betreten wird (z.B. weil ihn bereits ein
+    anderer Scan bearbeitet), seine aktuelle Größe geht trotzdem in die Summe ein.
     """
     issues: list[ScanIssue] = []
-    _scan_recursive_inner(node, on_progress, issues)
+    _scan_recursive_inner(node, on_progress, issues, skip)
     return issues
 
 
@@ -102,6 +106,7 @@ def _scan_recursive_inner(
     node: Node,
     on_progress: Callable[[Node], None] | None,
     issues: list[ScanIssue],
+    skip: Node | None,
 ) -> None:
     if not node.is_dir:
         return
@@ -110,8 +115,8 @@ def _scan_recursive_inner(
         issues.extend(scan_level(node))
 
     for child in node.children or []:
-        if child.is_dir:
-            _scan_recursive_inner(child, on_progress, issues)
+        if child.is_dir and child is not skip:
+            _scan_recursive_inner(child, on_progress, issues, skip)
 
     if node.state != ScanState.ERROR:
         node.size = sum(c.size for c in node.children or [])
