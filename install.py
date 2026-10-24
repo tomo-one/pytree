@@ -40,9 +40,8 @@ def _locations() -> tuple[Path, Path, Path]:
     return lib_dir, bin_dir, bin_dir / "pytree"
 
 
-def _write_launcher(launcher: Path, lib_dir: Path) -> None:
+def _write_launcher(launcher: Path, lib_dir: Path, py: str) -> None:
     launcher.parent.mkdir(parents=True, exist_ok=True)
-    py = sys.executable
     if IS_WINDOWS:
         text = (
             "@echo off\n"
@@ -61,26 +60,64 @@ def _write_launcher(launcher: Path, lib_dir: Path) -> None:
         launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def _install_textual() -> bool:
+def _in_venv() -> bool:
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def _venv_python(venv_dir: Path) -> Path:
+    return venv_dir / ("Scripts/python.exe" if IS_WINDOWS else "bin/python")
+
+
+def _pip_install_textual(python: str, user: bool) -> subprocess.CompletedProcess[str]:
+    cmd = [python, "-m", "pip", "install", "textual>=0.58"]
+    if user:
+        cmd.insert(4, "--user")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    return result
+
+
+def _private_venv_with_textual(venv_dir: Path) -> str | None:
+    print(f"Lege private Umgebung an: {venv_dir}")
+    created = subprocess.run(
+        [sys.executable, "-m", "venv", str(venv_dir)], capture_output=True, text=True
+    )
+    if created.returncode != 0:
+        print(created.stdout + created.stderr, file=sys.stderr)
+        print(
+            "Anlegen der venv fehlgeschlagen. Unter Debian/Ubuntu fehlt oft das Paket:\n"
+            "  apt install python3-venv   (als root, sonst Admin fragen)",
+            file=sys.stderr,
+        )
+        return None
+    python = str(_venv_python(venv_dir))
+    return python if _pip_install_textual(python, user=False).returncode == 0 else None
+
+
+def _install_textual(venv_dir: Path) -> str | None:
+    """Stellt textual bereit und liefert das Python, mit dem pytree laufen soll."""
     if importlib.util.find_spec("textual") is not None:
         print("textual ist bereits vorhanden.")
-        return True
-    print("Installiere textual (pip install --user) ...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--user", "textual>=0.58"]
-    )
+        return sys.executable
+    print("Installiere textual ...")
+    result = _pip_install_textual(sys.executable, user=not _in_venv())
     if result.returncode == 0:
-        return True
+        return sys.executable
+    if "externally-managed-environment" in result.stderr and not _in_venv():
+        print("\nDas System sperrt pip (PEP 668). Verwende stattdessen eine private venv.")
+        python = _private_venv_with_textual(venv_dir)
+        if python:
+            return python
     print(
         "\nInstallation von textual fehlgeschlagen. Häufige Ursachen:\n"
-        "  - pip fehlt: unter Ubuntu `sudo apt install python3-pip` (Admin nötig)\n"
-        "  - 'externally-managed-environment' (Ubuntu ab 23.04): erst eine venv\n"
-        "    anlegen und dieses Skript mit deren Python starten:\n"
-        "      python3 -m venv ~/.venvs/pytree && ~/.venvs/pytree/bin/python install.py\n"
-        "  - kein Internetzugang zu PyPI",
+        "  - pip fehlt: unter Debian/Ubuntu `apt install python3-pip` (Admin nötig)\n"
+        "  - kein Internetzugang zu PyPI\n"
+        "Mit --no-deps überspringt der Installer diesen Schritt (textual muss\n"
+        "dann bereits vorhanden sein).",
         file=sys.stderr,
     )
-    return False
+    return None
 
 
 def _on_path(directory: Path) -> bool:
@@ -116,10 +153,14 @@ def install(with_deps: bool) -> int:
     if not SOURCE_PACKAGE.is_dir():
         print(f"Quellpaket nicht gefunden: {SOURCE_PACKAGE}", file=sys.stderr)
         return 1
-    if with_deps and not _install_textual():
-        return 1
 
     lib_dir, bin_dir, launcher = _locations()
+    py = sys.executable
+    if with_deps:
+        py = _install_textual(lib_dir / "venv") or ""
+        if not py:
+            return 1
+
     target = lib_dir / "pytree"
     if target.exists():
         shutil.rmtree(target)
@@ -127,11 +168,11 @@ def install(with_deps: bool) -> int:
     shutil.copytree(
         SOURCE_PACKAGE, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc")
     )
-    _write_launcher(launcher, lib_dir)
+    _write_launcher(launcher, lib_dir, py)
 
     env = {**os.environ, "PYTHONPATH": str(lib_dir)}
     check = subprocess.run(
-        [sys.executable, "-m", "pytree", "--version"],
+        [py, "-m", "pytree", "--version"],
         env=env,
         capture_output=True,
         text=True,

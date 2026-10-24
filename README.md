@@ -35,16 +35,16 @@ python3 start.py [pfad]
 
 ### Probleme
 
+- **"externally-managed-environment"** (Debian 12, Ubuntu ab 23.04): Der
+  Installer erkennt das und legt selbst eine private Umgebung unter
+  `~/.local/share/pytree/venv` an. Dafür braucht Debian/Ubuntu das Paket
+  `python3-venv` (`apt install python3-venv`, als root).
 - **textual lässt sich nicht installieren** (kein pip, kein Internet): Der
   Installer nennt die Ursache. Mit `--no-deps` überspringt er den pip-Schritt,
   textual muss dann anderweitig vorhanden sein.
-- **"externally-managed-environment"** (Ubuntu ab 23.04): erst eine venv
-  anlegen und den Installer mit deren Python starten. Das Startskript merkt
-  sich dieses Python:
-  `python3 -m venv ~/.venvs/pytree && ~/.venvs/pytree/bin/python install.py`
-- **`python3 -m venv` schlägt fehl** (Ubuntu ohne `python3-venv`): einfach
-  `python3 install.py` ohne venv verwenden.
-
+- **Installation als root:** funktioniert genauso. Das Startskript landet dann
+  in `/root/.local/bin`. Für andere Benutzer den Installer unter deren Konto
+  ausführen.
 
 ## Nutzung
 
