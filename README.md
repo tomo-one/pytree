@@ -6,40 +6,45 @@ sortiert nach Größe, mit lazy Scanning großer Verzeichnisse.
 
 ## Installation
 
-Voraussetzung: Python ab 3.9.
+Voraussetzung: Python ab 3.9. Keine Admin-Rechte nötig. Läuft unter Windows,
+macOS und Linux.
 
 ```bash
-pip install --user .
+python3 install.py        # Windows: python install.py
 ```
 
-Falls das `pytree`-Kommando nicht im `PATH` liegt (z.B. auf Windows unter
-`%APPDATA%\Python\PythonXY\Scripts`), funktioniert immer:
+Das installiert die Abhängigkeit textual (`pip install --user`), kopiert
+pytree in ein Benutzerverzeichnis und legt das Kommando `pytree` an:
+
+| System        | Programm                          | Startskript                       |
+|---------------|-----------------------------------|-----------------------------------|
+| Linux / macOS | `~/.local/share/pytree`           | `~/.local/bin/pytree`             |
+| Windows       | `%LOCALAPPDATA%\pytree`           | `%LOCALAPPDATA%\pytree\bin\pytree.cmd` |
+
+Liegt das Startskript-Verzeichnis nicht im `PATH`, gibt der Installer den
+vollständigen Aufruf und den Befehl zum Eintragen aus. Ohne PATH-Eintrag
+funktioniert der Aufruf mit vollem Pfad weiterhin.
+
+Entfernen: `python3 install.py --uninstall`
+
+Ohne Installation direkt aus dem Quellordner (textual muss vorhanden sein):
 
 ```bash
-python -m pytree [pfad]
+python3 start.py [pfad]
 ```
 
-### Linux (Ubuntu/Debian)
+### Probleme
 
-Das System-pip und -setuptools sind dort oft veraltet. Ein Fehler wie
-"build backend ... build_editable" tritt auf, wenn ein `-e`-Install mit
-setuptools unter Version 64 versucht wird. Daher ohne `-e` installieren,
-am besten in einer virtuellen Umgebung (auch nötig ab Ubuntu 23.04 wegen
-PEP 668):
+- **textual lässt sich nicht installieren** (kein pip, kein Internet): Der
+  Installer nennt die Ursache. Mit `--no-deps` überspringt er den pip-Schritt,
+  textual muss dann anderweitig vorhanden sein.
+- **"externally-managed-environment"** (Ubuntu ab 23.04): erst eine venv
+  anlegen und den Installer mit deren Python starten. Das Startskript merkt
+  sich dieses Python:
+  `python3 -m venv ~/.venvs/pytree && ~/.venvs/pytree/bin/python install.py`
+- **`python3 -m venv` schlägt fehl** (Ubuntu ohne `python3-venv`): einfach
+  `python3 install.py` ohne venv verwenden.
 
-```bash
-python3 -m venv ~/.venvs/pytree
-~/.venvs/pytree/bin/pip install --upgrade pip setuptools
-~/.venvs/pytree/bin/pip install .
-~/.venvs/pytree/bin/pytree
-```
-
-Ohne jede Installation (nur textual muss vorhanden sein) geht es auch direkt
-aus dem Quellordner:
-
-```bash
-PYTHONPATH=src python3 -m pytree [pfad]
-```
 
 ## Nutzung
 
@@ -70,6 +75,7 @@ statt das Fenster stillschweigend zu schließen.
 ## Entwicklung
 
 ```bash
-pip install --user -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"   # editierbar, braucht setuptools ab Version 64
 pytest
 ```

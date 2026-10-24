@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytree"
-version = "0.4.1"
+version = "0.5.0"
 description = "Interaktiver, tastaturgesteuerter Disk-Usage-Analyzer (CLI/TUI)"
 requires-python = ">=3.9"
 dependencies = ["textual>=0.58"]

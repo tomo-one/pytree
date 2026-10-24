@@ -47,9 +47,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     target = target.resolve()
-    print(f"pytree {__version__} – analysiere: {target}  (? = Hilfe, q = beenden)")
 
-    from pytree.tui.app import PyTreeApp
+    try:
+        from pytree.tui.app import PyTreeApp
+    except ModuleNotFoundError as exc:
+        if exc.name != "textual":
+            raise
+        print(
+            "pytree: Das Paket 'textual' fehlt. Installieren mit:\n"
+            f"  {sys.executable} -m pip install --user textual",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"pytree {__version__} – analysiere: {target}  (? = Hilfe, q = beenden)")
 
     try:
         app = PyTreeApp(target)
