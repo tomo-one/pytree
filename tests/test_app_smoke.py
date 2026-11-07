@@ -103,7 +103,8 @@ def _names(tree_node) -> list[str]:
 
 async def _wait_for_root_scan(app: PyTreeApp, expected_size: int = 360) -> None:
     for _ in range(50):
-        if app._root_node.size == expected_size:
+        if app._root_node.size == expected_size and app._scanning_count == 0:
+            await asyncio.sleep(0)
             return
         await asyncio.sleep(0.05)
     raise AssertionError("Scan nicht innerhalb der Wartezeit abgeschlossen")
@@ -117,10 +118,8 @@ async def test_sort_toggle_switches_between_size_and_name(sample_tree: Path):
         await _wait_for_root_scan(app)
         tree = app.query_one("Tree")
 
-        # Direkt nach dem initialen Scan spiegelt die Baum-Reihenfolge noch
-        # den Stand beim ersten Populieren wider (Unterverzeichnisgrößen
-        # waren da noch nicht final bekannt) - "s" erzwingt eine Neusortierung
-        # mit den inzwischen vollständigen Größen.
+        assert _names(tree.root) == ["sub1", "a.txt", "sub2"]
+
         await pilot.press("s")  # -> Name
         await pilot.pause()
         names = _names(tree.root)
@@ -247,3 +246,45 @@ async def test_go_up_refused_when_parent_unreadable(sample_tree: Path, monkeypat
         await pilot.press("u")
         await pilot.pause()
         assert app._root_path == sample_tree / "sub1"
+
+
+@pytest.mark.asyncio
+async def test_initial_order_is_by_size_once_scan_finished(tmp_path: Path):
+    """Regressionstest: Ordner hatten beim ersten Anzeigen Größe 0 und blieben
+    alphabetisch hinter den Dateien stehen, auch nachdem ihre Größe bekannt war."""
+    for name, size in (("alpha", 50_000), ("beta", 900_000), ("gamma", 300_000)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "x.bin").write_bytes(b"x" * size)
+    (tmp_path / "zeta.txt").write_bytes(b"x" * 100_000)
+    (tmp_path / "aaa.txt").write_bytes(b"x" * 2_000)
+
+    app = PyTreeApp(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_for_root_scan(app, expected_size=1_352_000)
+        await pilot.pause()
+        tree = app.query_one("Tree")
+        assert _names(tree.root) == ["beta", "gamma", "zeta.txt", "alpha", "aaa.txt"]
+        assert is_parent_link(tree.root.children[0].data)
+
+
+@pytest.mark.asyncio
+async def test_resort_keeps_cursor_and_expanded_nodes(sample_tree: Path):
+    app = PyTreeApp(sample_tree)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await _wait_for_root_scan(app)
+        tree = app.query_one("Tree")
+        sub1 = next(c for c in tree.root.children if c.data.name == "sub1")
+        sub1.expand()
+        await pilot.pause()
+        sub2 = next(c for c in tree.root.children if c.data.name == "sub2")
+        tree.move_cursor(sub2)
+        await pilot.pause()
+
+        await pilot.press("s")
+        await pilot.pause()
+
+        assert tree.cursor_node.data.name == "sub2"
+        sub1 = next(c for c in tree.root.children if c.data.name == "sub1")
+        assert sub1.is_expanded

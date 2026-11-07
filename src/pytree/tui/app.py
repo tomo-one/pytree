@@ -26,6 +26,8 @@ from pytree.tui.labels import (
 from pytree.tui.widgets import HelpScreen, IssuesScreen, PyTreeView, StatusBar
 
 _PROGRESS_THROTTLE_SECONDS = 0.15
+# Während eines Scans höchstens so oft nachsortieren, damit die Liste nicht springt.
+_RESORT_INTERVAL_SECONDS = 1.0
 
 
 class PyTreeApp(App[None]):
@@ -64,6 +66,7 @@ class PyTreeApp(App[None]):
         self._issues: list[ScanIssue] = []
         self._scanning_count = 0
         self._sort_mode = SortMode.SIZE
+        self._last_resort = 0.0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -166,11 +169,7 @@ class PyTreeApp(App[None]):
 
     def action_toggle_sort(self) -> None:
         self._sort_mode = self._sort_mode.other
-        tree = self.query_one(Tree)
-        expanded_ids: set[int] = set()
-        self._collect_expanded_ids(tree.root, expanded_ids)
-        self._rebuild_sorted(tree.root)
-        self._apply_expanded_ids(tree.root, expanded_ids)
+        self._resort_tree(force=True)
         self._refresh_status()
 
     def action_show_issues(self) -> None:
@@ -217,6 +216,8 @@ class PyTreeApp(App[None]):
                 ancestor.file_count = sum(c.file_count for c in ancestor.children)
             self._refresh_label(ancestor)
             ancestor = ancestor.parent
+        if time.monotonic() - self._last_resort >= _RESORT_INTERVAL_SECONDS:
+            self._resort_tree()
         self._refresh_status()
 
     def _finish_scan(self, issues: list[ScanIssue]) -> None:
@@ -226,7 +227,44 @@ class PyTreeApp(App[None]):
             core_node = tree_node.data
             if core_node is not None:
                 tree_node.set_label(node_label(core_node))
+        self._resort_tree()
         self._refresh_status()
+
+    def _resort_tree(self, force: bool = False) -> None:
+        """Sortiert den sichtbaren Baum neu, wenn sich die Reihenfolge geändert
+        hat. Aufgeklappte Ordner und der Cursor bleiben erhalten."""
+        self._last_resort = time.monotonic()
+        tree = self.query_one(Tree)
+        if not force and not self._order_changed(tree.root):
+            return
+
+        cursor = tree.cursor_node
+        cursor_on_parent_link = cursor is not None and is_parent_link(cursor.data)
+        cursor_id = id(cursor.data) if cursor is not None and cursor.data is not None else None
+
+        expanded_ids: set[int] = set()
+        self._collect_expanded_ids(tree.root, expanded_ids)
+        self._rebuild_sorted(tree.root)
+        self._apply_expanded_ids(tree.root, expanded_ids)
+
+        if cursor_on_parent_link and tree.root.children:
+            target = tree.root.children[0]
+        else:
+            target = self._treenodes.get(cursor_id) if cursor_id is not None else None
+        if target is not None:
+            tree.call_after_refresh(tree.move_cursor, target)
+
+    def _order_changed(self, tree_node: TreeNode[Node]) -> bool:
+        core_node = tree_node.data
+        if core_node is None or not core_node.is_dir or core_node.children is None:
+            return False
+        shown = [c for c in tree_node.children if not is_parent_link(c.data)]
+        if not shown:
+            return False
+        wanted = sort_children(core_node.children, self._sort_mode)
+        if [id(c.data) for c in shown] != [id(c) for c in wanted]:
+            return True
+        return any(self._order_changed(c) for c in shown)
 
     # -- UI-Hilfsfunktionen -----------------------------------------------
 
