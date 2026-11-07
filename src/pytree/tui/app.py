@@ -23,15 +23,28 @@ from pytree.tui.labels import (
     parent_link_label,
     sort_children,
 )
-from pytree.tui.widgets import HelpScreen, IssuesScreen, PyTreeView, StatusBar
+from pytree.tui.widgets import (
+    ActivityBar,
+    HelpScreen,
+    IssuesScreen,
+    PyTreeView,
+    StatusBar,
+)
 
 _PROGRESS_THROTTLE_SECONDS = 0.15
 # Während eines Scans höchstens so oft nachsortieren, damit die Liste nicht springt.
 _RESORT_INTERVAL_SECONDS = 1.0
+# So lange bleiben "neu sortiert" bzw. "Scan abgeschlossen" stehen.
+_ACTIVITY_LINGER_SECONDS = 1.5
+_ACTIVITY_TICK_SECONDS = 0.12
+# Reines ASCII, damit es auch in alten Windows-Konsolen sauber dreht.
+_SPINNER = "|/-\\"
 
 
 class PyTreeApp(App[None]):
     """Read-only Disk-Usage-Analyzer: lazy Scan pro aufgeklapptem Teilbaum."""
+
+    TITLE = "pytree"
 
     CSS = """
     Tree {
@@ -67,10 +80,15 @@ class PyTreeApp(App[None]):
         self._scanning_count = 0
         self._sort_mode = SortMode.SIZE
         self._last_resort = 0.0
+        self._resorted_at = float("-inf")
+        self._finished_at = float("-inf")
+        self._spinner_frame = 0
+        self._activity_timer = None
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical():
+            yield ActivityBar(id="activity")
             yield PyTreeView(
                 node_label(self._root_node), data=self._root_node, id="tree"
             )
@@ -223,6 +241,8 @@ class PyTreeApp(App[None]):
     def _finish_scan(self, issues: list[ScanIssue]) -> None:
         self._issues.extend(issues)
         self._scanning_count = max(0, self._scanning_count - 1)
+        if self._scanning_count == 0:
+            self._finished_at = time.monotonic()
         for tree_node in list(self._treenodes.values()):
             core_node = tree_node.data
             if core_node is not None:
@@ -246,6 +266,7 @@ class PyTreeApp(App[None]):
         self._collect_expanded_ids(tree.root, expanded_ids)
         self._rebuild_sorted(tree.root)
         self._apply_expanded_ids(tree.root, expanded_ids)
+        self._resorted_at = time.monotonic()
 
         if cursor_on_parent_link and tree.root.children:
             target = tree.root.children[0]
@@ -314,7 +335,48 @@ class PyTreeApp(App[None]):
         if tree_node is not None:
             tree_node.set_label(node_label(node))
 
+    def _update_activity(self) -> None:
+        bar = self.query_one(ActivityBar)
+        now = time.monotonic()
+        scanning = self._scanning_count > 0
+        resorted = now - self._resorted_at < _ACTIVITY_LINGER_SECONDS
+        finished = now - self._finished_at < _ACTIVITY_LINGER_SECONDS
+
+        if not (scanning or resorted or finished):
+            bar.display = False
+            if self._activity_timer is not None:
+                self._activity_timer.stop()
+                self._activity_timer = None
+            return
+
+        if scanning:
+            root = self._root_node
+            files = f"{root.file_count:,}".replace(",", ".")
+            parts = [
+                f"{_SPINNER[self._spinner_frame % len(_SPINNER)]} Scanne …",
+                f"{files} Dateien, {human_size(root.size)} bisher",
+            ]
+            if self._sort_mode is SortMode.SIZE:
+                parts.append("Reihenfolge wird laufend angepasst")
+        else:
+            parts = ["Scan abgeschlossen"] if finished else []
+        if resorted:
+            parts.append(f"neu sortiert nach {self._sort_mode.label}")
+
+        bar.set_class(not scanning, "-done")
+        bar.update("  ·  ".join(parts))
+        bar.display = True
+        if self._activity_timer is None:
+            self._activity_timer = self.set_interval(
+                _ACTIVITY_TICK_SECONDS, self._tick_activity
+            )
+
+    def _tick_activity(self) -> None:
+        self._spinner_frame += 1
+        self._update_activity()
+
     def _refresh_status(self) -> None:
+        self._update_activity()
         status = self.query_one(StatusBar)
         root = self._root_node
         parts = [

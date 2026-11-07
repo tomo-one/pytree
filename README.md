@@ -75,6 +75,11 @@ Pfad, Kurzhinweis auf `?`/`q`), bevor die Baumansicht den Bildschirm
 übernimmt. Ein unerwarteter Fehler wird mit Traceback auf stderr ausgegeben
 statt das Fenster stillschweigend zu schließen.
 
+Solange gescannt wird, zeigt eine gelbe Zeile oben den Fortschritt (Anzahl
+Dateien, bisherige Größe). Da sich die Reihenfolge dabei noch ändern kann,
+meldet sie auch das Nachsortieren. Ist alles fertig, wird sie kurz grün
+("Scan abgeschlossen") und verschwindet dann.
+
 Als erster Eintrag der Wurzel steht `..`. Mit Enter oder → darauf (oder mit
 `u`/Backspace) wird das Elternverzeichnis zur neuen Wurzel. Der bisher
 gescannte Baum bleibt dabei erhalten, nur die Nachbarordner werden neu

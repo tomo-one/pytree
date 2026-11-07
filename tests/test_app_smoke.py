@@ -288,3 +288,41 @@ async def test_resort_keeps_cursor_and_expanded_nodes(sample_tree: Path):
         assert tree.cursor_node.data.name == "sub2"
         sub1 = next(c for c in tree.root.children if c.data.name == "sub1")
         assert sub1.is_expanded
+
+
+@pytest.mark.asyncio
+async def test_activity_bar_shows_scan_progress_then_disappears(sample_tree: Path, monkeypatch):
+    import threading
+
+    import pytree.tui.app as app_module
+    from pytree.tui.widgets import ActivityBar
+
+    release = threading.Event()
+    real_scan = app_module.scan_recursive
+
+    def blocking_scan(*args, **kwargs):
+        release.wait(5)
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(app_module, "scan_recursive", blocking_scan)
+    monkeypatch.setattr(app_module, "_ACTIVITY_LINGER_SECONDS", 0.3)
+
+    app = PyTreeApp(sample_tree)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bar = app.query_one(ActivityBar)
+        assert bar.display
+        assert "Scanne" in str(bar.render())
+        assert not bar.has_class("-done")
+
+        release.set()
+        await _wait_for_root_scan(app)
+        await pilot.pause()
+        assert bar.display
+        assert "Scan abgeschlossen" in str(bar.render())
+        assert "neu sortiert" in str(bar.render())
+        assert bar.has_class("-done")
+
+        await asyncio.sleep(0.5)
+        await pilot.pause()
+        assert not bar.display

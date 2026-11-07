@@ -16,6 +16,25 @@ class StatusBar(Static):
     """Statuszeile: aktueller Pfad, Anzahl Elemente, Scan-Status."""
 
 
+class ActivityBar(Static):
+    """Hinweiszeile oben, nur sichtbar solange gescannt oder neu sortiert wird."""
+
+    DEFAULT_CSS = """
+    ActivityBar {
+        height: 1;
+        padding: 0 1;
+        display: none;
+        background: $warning-muted;
+        color: $text-warning;
+        text-style: bold;
+    }
+    ActivityBar.-done {
+        background: $success-muted;
+        color: $text-success;
+    }
+    """
+
+
 class PyTreeView(Tree[Node]):
     """Tree mit Pfeil-/Vi-Tasten für Auf-/Zuklappen und Navigation.
 
@@ -61,7 +80,8 @@ HELP_TEXT = """\
   q, Ctrl+C        Beenden
 
 Größen werden lazy ermittelt: ein Verzeichnis zeigt beim Aufklappen zunächst
-"…" an, während im Hintergrund rekursiv weitergescannt wird. "r" erzwingt
+"…" an, während im Hintergrund rekursiv weitergescannt wird. Die gelbe
+Zeile oben zeigt, dass noch gescannt wird und sich die Reihenfolge ändern kann. "r" erzwingt
 einen erneuten Scan, um Änderungen auf der Platte zu erfassen.
 
 [dim]Beliebige Taste zum Schließen[/dim]
